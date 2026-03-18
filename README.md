@@ -1,7 +1,7 @@
 # Service Registry Architecture
 
 
-## [![Watch the video](URL_TO_THUMBNAIL_IMAGE)]([URL_TO_GOOGLE_DRIVE_VIDEO](https://drive.google.com/file/d/1mCY1GOhhqKWepMvivmVE1QQEv-xvVxih/view?usp=sharing))
+## [![Watch the video] (https://drive.google.com/file/d/1mCY1GOhhqKWepMvivmVE1QQEv-xvVxih/view?usp=sharing)]
 ## 📐 System Overview
 
 ```
