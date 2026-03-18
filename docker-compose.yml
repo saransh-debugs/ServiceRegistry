@@ -1,0 +1,70 @@
+services:
+  registry:
+    build: .
+    command: python service_registry_improved.py
+    ports:
+      - "5001:5001"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # ------------------------------------------------------------------
+  # user-service instance 1
+  # ------------------------------------------------------------------
+  user-service-1:
+    build: .
+    command: python microservice.py
+    environment:
+      SERVICE_NAME: user-service
+      SERVICE_PORT: "8001"
+      SERVICE_ADDRESS: http://user-service-1:8001
+      REGISTRY_URL: http://registry:5001
+    ports:
+      - "8001:8001"
+    depends_on:
+      registry:
+        condition: service_healthy
+
+  # ------------------------------------------------------------------
+  # user-service instance 2
+  # ------------------------------------------------------------------
+  user-service-2:
+    build: .
+    command: python microservice.py
+    environment:
+      SERVICE_NAME: user-service
+      SERVICE_PORT: "8001"
+      SERVICE_ADDRESS: http://user-service-2:8001
+      REGISTRY_URL: http://registry:5001
+    ports:
+      - "8002:8001"
+    depends_on:
+      registry:
+        condition: service_healthy
+
+  # ------------------------------------------------------------------
+  # Demo client — one-shot; exits after N calls
+  # ------------------------------------------------------------------
+  client:
+    build: .
+    command: >
+      sh -c "sleep 5 &&
+             python client_demo.py
+               --registry http://registry:5001
+               --service user-service
+               --calls 12"
+    environment:
+      REGISTRY_URL: http://registry:5001
+    depends_on:
+      registry:
+        condition: service_healthy
+      user-service-1:
+        condition: service_started
+      user-service-2:
+        condition: service_started
+    profiles:
+      - demo

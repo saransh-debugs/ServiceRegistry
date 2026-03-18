@@ -456,4 +456,124 @@ Benefits:
 └─────────────────────────────────────────┘
 ```
 
-This architecture provides a solid foundation for understanding distributed service discovery! 🚀
+This architecture provides a solid foundation for understanding distributed service discovery!
+
+---
+
+## Service Mesh Extension (Istio)
+
+### Overview
+
+The service mesh layer sits orthogonal to the application-level registry. Where the registry
+provides discovery, Istio provides traffic control, observability, and mTLS — entirely
+transparently to application code.
+
+```
+                         ┌───────────────────────────────────────────┐
+                         │          Kubernetes Cluster               │
+                         │  (namespace: service-mesh)                │
+                         │                                           │
+  External traffic       │  ┌─────────────────────────────────────┐ │
+  ─────────────────────>──>──│     Istio IngressGateway            │ │
+                         │  │     (Gateway resource)              │ │
+                         │  └──────────────┬──────────────────────┘ │
+                         │                 │ VirtualService          │
+                         │                 ▼                         │
+                         │  ┌─────────────────────────────────────┐ │
+                         │  │     Istio Pilot / istiod            │ │
+                         │  │     (DestinationRule: ROUND_ROBIN)  │ │
+                         │  └──────────────┬──────────────────────┘ │
+                         │                 │                         │
+                         │     ┌───────────┴────────────┐           │
+                         │     ▼                         ▼           │
+                         │  ┌──────────────┐   ┌──────────────────┐ │
+                         │  │ user-service │   │  user-service    │ │
+                         │  │   Pod 1      │   │    Pod 2         │ │
+                         │  │ ┌──────────┐ │   │ ┌──────────────┐ │ │
+                         │  │ │  App     │ │   │ │    App       │ │ │
+                         │  │ │ :8001    │ │   │ │   :8001      │ │ │
+                         │  │ └──────────┘ │   │ └──────────────┘ │ │
+                         │  │ ┌──────────┐ │   │ ┌──────────────┐ │ │
+                         │  │ │  Envoy   │ │   │ │    Envoy     │ │ │
+                         │  │ │ sidecar  │ │   │ │   sidecar    │ │ │
+                         │  │ └──────────┘ │   │ └──────────────┘ │ │
+                         │  └──────────────┘   └──────────────────┘ │
+                         └───────────────────────────────────────────┘
+```
+
+### Sidecar Injection
+
+Each pod in the `service-mesh` namespace automatically receives an Envoy sidecar proxy.
+The namespace label `istio-injection: enabled` triggers Istio's mutating admission webhook
+to inject the proxy container before the pod starts:
+
+```
+Pod lifecycle with Istio injection:
+  kubectl apply  →  Admission Webhook  →  Envoy injected  →  Pod starts
+                    (mutating)            (init + sidecar)
+```
+
+All inbound and outbound traffic for the application container is transparently
+intercepted by the Envoy sidecar via iptables rules set up by the `istio-init` init container.
+
+### Traffic Flow: App → Sidecar → Mesh
+
+```
+Client Pod                          user-service Pod 1
+┌──────────────────────────┐        ┌──────────────────────────────────────┐
+│  App code                │        │  Envoy sidecar (inbound)             │
+│  requests.get(           │        │  • mTLS termination                  │
+│    "http://user-service" │        │  • metrics collection                │
+│  )                       │        │  • access logging                    │
+│         │                │        │  • circuit breaking                  │
+│         ▼                │        │         │                            │
+│  Envoy sidecar           │  mTLS  │         ▼                            │
+│  (outbound)              │◄──────►│  App container                       │
+│  • service discovery     │        │  :8001/ping                          │
+│  • load balancing        │        └──────────────────────────────────────┘
+│  • retries (x3)          │
+│  • timeout (10s)         │
+│  • mTLS origination      │
+└──────────────────────────┘
+```
+
+### Istio Resources
+
+| Resource | File | Purpose |
+|---|---|---|
+| `Namespace` | `k8s/istio/namespace.yaml` | Enable sidecar auto-injection |
+| `Gateway` | `k8s/istio/gateway.yaml` | Accept external HTTP on port 80 |
+| `VirtualService` | `k8s/istio/virtual-service.yaml` | Route traffic + retries + timeout |
+| `DestinationRule` | `k8s/istio/destination-rule.yaml` | ROUND_ROBIN lb + outlier detection |
+
+### DestinationRule: Outlier Detection
+
+The `DestinationRule` configures automatic circuit breaking. If a pod returns 3 consecutive
+5xx errors within a 10s window, Istio ejects it from the load balancing pool for 30 seconds:
+
+```
+Normal:          Pod1 ──── Pod2 ──── Pod1 ──── Pod2   (ROUND_ROBIN)
+
+Pod2 failing:    Pod1 ──── Pod2(err) ──── Pod2(err) ──── Pod2(err)
+                                                           │
+                                          Ejected ─────────┘ (30s)
+
+During ejection: Pod1 ──── Pod1 ──── Pod1 ──── Pod1
+                 (100% traffic to healthy instance)
+```
+
+### Comparison: App-Level Registry vs Service Mesh
+
+| Concern | Service Registry | Istio Service Mesh |
+|---|---|---|
+| Discovery | App calls `/discover` | Envoy resolves via xDS |
+| Load balancing | `random.choice()` in client | ROUND_ROBIN in data plane |
+| Health checks | Heartbeat timeout (30s) | Outlier detection (continuous) |
+| Retries | Manual in client code | Declarative `VirtualService` |
+| mTLS | None | Automatic between all pods |
+| Observability | `print()` statements | Prometheus + Jaeger + Kiali |
+| Circuit breaking | None | `DestinationRule` outlierDetection |
+| Traffic shifting | Not supported | Weighted routes in VirtualService |
+
+Both layers are complementary in this codebase: the registry handles self-registration
+and explicit discovery; Istio handles the transport layer transparently.

@@ -5,7 +5,7 @@ metadata:
   labels:
     app: user-service
 spec:
-  replicas: 2  # Run 2 instances for demonstration
+  replicas: 2
   selector:
     matchLabels:
       app: user-service
@@ -13,23 +13,44 @@ spec:
     metadata:
       labels:
         app: user-service
+      annotations:
+        sidecar.istio.io/inject: "true"
     spec:
       containers:
       - name: user-service
         image: service-registry:latest
         imagePullPolicy: Never
-        command: ["python", "example_service.py"]
-        args: ["user-service", "$(POD_IP):8001"]
+        command: ["python", "microservice.py"]
         env:
+        - name: SERVICE_NAME
+          value: "user-service"
+        - name: SERVICE_PORT
+          value: "8001"
         - name: POD_IP
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
+        - name: SERVICE_ADDRESS
+          value: "http://$(POD_IP):8001"
+        - name: REGISTRY_URL
+          value: "http://service-registry:5001"
         - name: PYTHONUNBUFFERED
           value: "1"
         ports:
         - containerPort: 8001
           name: http
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
@@ -62,23 +83,44 @@ spec:
     metadata:
       labels:
         app: payment-service
+      annotations:
+        sidecar.istio.io/inject: "true"
     spec:
       containers:
       - name: payment-service
         image: service-registry:latest
         imagePullPolicy: Never
-        command: ["python", "example_service.py"]
-        args: ["payment-service", "$(POD_IP):8002"]
+        command: ["python", "microservice.py"]
         env:
+        - name: SERVICE_NAME
+          value: "payment-service"
+        - name: SERVICE_PORT
+          value: "8002"
         - name: POD_IP
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
+        - name: SERVICE_ADDRESS
+          value: "http://$(POD_IP):8002"
+        - name: REGISTRY_URL
+          value: "http://service-registry:5001"
         - name: PYTHONUNBUFFERED
           value: "1"
         ports:
         - containerPort: 8002
           name: http
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 10
+          periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
@@ -95,5 +137,3 @@ spec:
     name: http
   selector:
     app: payment-service
-
-# Made with Bob

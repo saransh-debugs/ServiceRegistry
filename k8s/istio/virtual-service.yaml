@@ -1,0 +1,27 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: user-service
+  namespace: service-mesh
+spec:
+  hosts:
+    - user-service
+    - user-service.local
+  gateways:
+    - user-service-gateway
+    - mesh
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: user-service
+            port:
+              number: 8001
+          weight: 100
+      retries:
+        attempts: 3
+        perTryTimeout: 5s
+        retryOn: gateway-error,connect-failure,retriable-4xx
+      timeout: 10s

@@ -9,6 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY service_registry_improved.py .
 COPY example_service.py .
+COPY microservice.py .
+COPY client_demo.py .
 
 # Expose port
 EXPOSE 5001
