@@ -1,448 +1,579 @@
-# Service Registry - Distributed System Learning Project
+# Service Registry Architecture
 
-A simple but functional service registry implementation for understanding service discovery in distributed systems.
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-Python 3.8 or higher
-
-### Installation
-
-1. **Clone the repository:**
-```bash
-git clone https://github.com/ranjanr/ServiceRegistry.git
-cd ServiceRegistry
-```
-
-2. **Create a virtual environment (Python 3.13+):**
-```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. **Install dependencies:**
-```bash
-pip install -r requirements.txt
-```
-
-### Running the Service Registry
-
-```bash
-# Make sure virtual environment is activated
-source venv/bin/activate
-
-# Start the registry
-python3 service_registry_improved.py
-```
-
-You should see:
-```
-Service Registry starting on port 5000...
-Heartbeat timeout: 30s
-Cleanup interval: 10s
-```
-
-## 📚 What is a Service Registry?
-
-A **Service Registry** is a database of available service instances in a distributed system. It enables:
-
-- **Service Registration**: Services register themselves when they start
-- **Service Discovery**: Services can find and communicate with each other
-- **Health Monitoring**: Track which services are alive and healthy
-- **Load Balancing**: Distribute requests across multiple service instances
-
-## 🏗️ Architecture
+## 📐 System Overview
 
 ```
-┌─────────────┐         ┌─────────────────┐         ┌─────────────┐
-│  Service A  │────────▶│ Service Registry │◀────────│  Service B  │
-│ (Port 8001) │ Register│   (Port 5000)    │ Discover│ (Port 8002) │
-└─────────────┘         └─────────────────┘         └─────────────┘
-      │                          │                          │
-      └──────── Heartbeat ───────┘                          │
-                                 └──────── Heartbeat ───────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     Service Registry System                      │
+│                                                                   │
+│  ┌────────────────────────────────────────────────────────┐    │
+│  │              Service Registry (Port 5000)               │    │
+│  │                                                          │    │
+│  │  ┌──────────────────────────────────────────────────┐  │    │
+│  │  │         In-Memory Registry Storage               │  │    │
+│  │  │                                                   │  │    │
+│  │  │  {                                                │  │    │
+│  │  │    "user-service": [                             │  │    │
+│  │  │      {                                            │  │    │
+│  │  │        "address": "http://localhost:8001",       │  │    │
+│  │  │        "registered_at": "2026-03-11T10:00:00",  │  │    │
+│  │  │        "last_heartbeat": "2026-03-11T10:05:30"  │  │    │
+│  │  │      }                                            │  │    │
+│  │  │    ],                                             │  │    │
+│  │  │    "payment-service": [...]                      │  │    │
+│  │  │  }                                                │  │    │
+│  │  └──────────────────────────────────────────────────┘  │    │
+│  │                                                          │    │
+│  │  ┌──────────────────────────────────────────────────┐  │    │
+│  │  │         Background Cleanup Thread                │  │    │
+│  │  │  • Runs every 10 seconds                         │  │    │
+│  │  │  • Removes stale services (no heartbeat > 30s)   │  │    │
+│  │  └──────────────────────────────────────────────────┘  │    │
+│  └────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
+                              ▲
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                     │
+        ▼                     ▼                     ▼
+┌───────────────┐     ┌───────────────┐     ┌───────────────┐
+│ User Service  │     │ User Service  │     │Payment Service│
+│  Instance 1   │     │  Instance 2   │     │  Instance 1   │
+│ Port 8001     │     │ Port 8003     │     │ Port 8002     │
+└───────────────┘     └───────────────┘     └───────────────┘
 ```
 
-## 📁 Project Files
+## 🔄 Request Flow Diagrams
 
-### 1. `service_registry.py` (Original Example)
-The basic implementation you provided - simple but functional.
+### 1. Service Registration Flow
 
-**Pros:**
-- ✅ Simple and easy to understand
-- ✅ Core functionality works
-
-**Cons:**
-- ❌ No error handling
-- ❌ No health checks
-- ❌ No way to remove services
-- ❌ Services stay registered forever (even if they crash)
-
-### 2. `service_registry_improved.py` (Production-Ready)
-Enhanced version with enterprise features.
-
-**New Features:**
-- ✅ **Error Handling**: Proper validation and error responses
-- ✅ **Health Checks**: Heartbeat mechanism to detect dead services
-- ✅ **Deregistration**: Services can unregister gracefully
-- ✅ **Auto Cleanup**: Removes stale services automatically
-- ✅ **Thread Safety**: Uses locks for concurrent access
-- ✅ **Detailed Responses**: Rich JSON responses with metadata
-- ✅ **Service Listing**: View all registered services
-
-### 3. `example_service.py`
-Demo client showing how services interact with the registry.
-
-### 4. Kubernetes/Minikube Deployment
-- **Dockerfile** - Container image for the registry
-- **k8s/** - Kubernetes manifests for deployment
-- **KUBERNETES.md** - Complete Kubernetes deployment guide
-- **deploy-minikube.sh** - Automated deployment script
-
-### 5. HashiCorp Consul Integration
-- **consul_client.py** - Consul service discovery client
-- **CONSUL.md** - Production-grade service registry guide
-- Compare custom implementation with industry-standard Consul
-
-## 🚀 Getting Started
-
-Choose your learning path:
-
-### Option 1: Local Development (Recommended for Learning)
-
-#### Prerequisites
-
-Python 3.8 or higher
-
-#### Installation
-
-1. **Clone the repository:**
-```bash
-git clone https://github.com/ranjanr/ServiceRegistry.git
-cd ServiceRegistry
+```
+Service                          Registry
+  │                                 │
+  │  POST /register                 │
+  │  {                              │
+  │    "service": "user-service",   │
+  │    "address": "http://...:8001" │
+  │  }                              │
+  ├────────────────────────────────>│
+  │                                 │
+  │                                 │ 1. Validate request
+  │                                 │ 2. Acquire lock
+  │                                 │ 3. Check if exists
+  │                                 │ 4. Add to registry
+  │                                 │ 5. Release lock
+  │                                 │
+  │  200 OK                         │
+  │  {                              │
+  │    "status": "registered"       │
+  │  }                              │
+  │<────────────────────────────────┤
+  │                                 │
+  │  Start heartbeat loop           │
+  │  (every 10 seconds)             │
+  │                                 │
 ```
 
-2. **Create a virtual environment:**
-```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+### 2. Service Discovery Flow
+
+```
+Client                           Registry
+  │                                 │
+  │  GET /discover/user-service     │
+  ├────────────────────────────────>│
+  │                                 │
+  │                                 │ 1. Acquire lock
+  │                                 │ 2. Find service
+  │                                 │ 3. Filter active instances
+  │                                 │    (heartbeat < 30s ago)
+  │                                 │ 4. Release lock
+  │                                 │
+  │  200 OK                         │
+  │  {                              │
+  │    "service": "user-service",   │
+  │    "instances": [               │
+  │      {                          │
+  │        "address": "http://...", │
+  │        "uptime_seconds": 120    │
+  │      }                          │
+  │    ],                           │
+  │    "count": 1                   │
+  │  }                              │
+  │<────────────────────────────────┤
+  │                                 │
+  │  Choose instance                │
+  │  Make request to service        │
+  │                                 │
 ```
 
-3. **Install dependencies:**
-```bash
-pip install -r requirements.txt
+### 3. Heartbeat Flow
+
+```
+Service                          Registry
+  │                                 │
+  │  (Every 10 seconds)             │
+  │                                 │
+  │  POST /heartbeat                │
+  │  {                              │
+  │    "service": "user-service",   │
+  │    "address": "http://...:8001" │
+  │  }                              │
+  ├────────────────────────────────>│
+  │                                 │
+  │                                 │ 1. Acquire lock
+  │                                 │ 2. Find instance
+  │                                 │ 3. Update last_heartbeat
+  │                                 │ 4. Release lock
+  │                                 │
+  │  200 OK                         │
+  │  {                              │
+  │    "status": "ok"               │
+  │  }                              │
+  │<────────────────────────────────┤
+  │                                 │
 ```
 
-#### Running the Registry
+### 4. Cleanup Flow
 
-**Basic Version:**
-```bash
-python3 service_registry.py
+```
+Registry Background Thread
+  │
+  │  (Every 10 seconds)
+  │
+  ├─> Acquire lock
+  │
+  ├─> For each service:
+  │     For each instance:
+  │       If (now - last_heartbeat) > 30s:
+  │         Remove instance
+  │
+  ├─> Remove empty services
+  │
+  ├─> Release lock
+  │
+  └─> Sleep 10 seconds
 ```
 
-**Improved Version (Recommended):**
-```bash
-python3 service_registry_improved.py
+## 🏗️ Component Architecture
+
+### Registry Core Components
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Flask Application                      │
+├─────────────────────────────────────────────────────────┤
+│                                                           │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │              API Endpoints Layer                 │   │
+│  │                                                   │   │
+│  │  • POST /register      - Register service        │   │
+│  │  • GET  /discover/:id  - Find service            │   │
+│  │  • POST /heartbeat     - Update heartbeat        │   │
+│  │  • POST /deregister    - Remove service          │   │
+│  │  • GET  /services      - List all services       │   │
+│  │  • GET  /health        - Registry health         │   │
+│  └─────────────────────────────────────────────────┘   │
+│                          │                               │
+│                          ▼                               │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │           Business Logic Layer                   │   │
+│  │                                                   │   │
+│  │  • Validation                                     │   │
+│  │  • Error handling                                 │   │
+│  │  • Instance filtering (active vs stale)          │   │
+│  │  • Timestamp management                           │   │
+│  └─────────────────────────────────────────────────┘   │
+│                          │                               │
+│                          ▼                               │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │            Data Access Layer                     │   │
+│  │                                                   │   │
+│  │  • Thread-safe registry access                   │   │
+│  │  • Lock management                                │   │
+│  │  • CRUD operations                                │   │
+│  └─────────────────────────────────────────────────┘   │
+│                          │                               │
+│                          ▼                               │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │              Storage Layer                       │   │
+│  │                                                   │   │
+│  │  registry = {}  (In-memory dictionary)           │   │
+│  │  registry_lock = threading.Lock()                │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                           │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│              Background Cleanup Thread                   │
+│                                                           │
+│  while True:                                             │
+│    sleep(10)                                             │
+│    cleanup_stale_services()                              │
+└─────────────────────────────────────────────────────────┘
 ```
 
-The registry will start on `http://localhost:5001`
+### Service Client Components
 
-### Option 2: Kubernetes/Minikube (Production-like Environment)
-
-#### Prerequisites
-
-- [Minikube](https://minikube.sigs.k8s.io/docs/start/)
-- [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- Docker
-
-#### Quick Deploy
-
-```bash
-# One-command deployment
-./deploy-minikube.sh
+```
+┌─────────────────────────────────────────────────────────┐
+│                  Service Application                     │
+├─────────────────────────────────────────────────────────┤
+│                                                           │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │           Business Logic                         │   │
+│  │  (Your actual service code)                      │   │
+│  └─────────────────────────────────────────────────┘   │
+│                          │                               │
+│                          ▼                               │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │         ServiceClient (Registry Client)          │   │
+│  │                                                   │   │
+│  │  • register()      - Register on startup         │   │
+│  │  • deregister()    - Cleanup on shutdown         │   │
+│  │  • send_heartbeat()- Keep alive                  │   │
+│  │  • discover()      - Find other services         │   │
+│  │                                                   │   │
+│  │  ┌───────────────────────────────────────────┐  │   │
+│  │  │    Heartbeat Thread                       │  │   │
+│  │  │                                           │  │   │
+│  │  │  while not stopped:                       │  │   │
+│  │  │    send_heartbeat()                       │  │   │
+│  │  │    sleep(10)                              │  │   │
+│  │  └───────────────────────────────────────────┘  │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                           │
+└─────────────────────────────────────────────────────────┘
 ```
 
-This will:
-1. Start Minikube (if not running)
-2. Build Docker image
-3. Deploy registry and example services
-4. Show access URLs and test commands
+## 🔐 Thread Safety
 
-#### Manual Deploy
-
-```bash
-# Start Minikube
-minikube start
-
-# Build image
-eval $(minikube docker-env)
-docker build -t service-registry:latest .
-
-# Deploy
-kubectl apply -f k8s/registry-deployment.yaml
-kubectl apply -f k8s/example-service-deployment.yaml
-
-# Access
-minikube ip  # Get IP
-curl http://<MINIKUBE_IP>:30001/health
-```
-
-**See [KUBERNETES.md](KUBERNETES.md) for complete guide.**
-
-### Testing with Example Services
-
-**Terminal 1: Start the Registry**
-```bash
-python service_registry_improved.py
-```
-
-**Terminal 2: Start User Service**
-```bash
-python example_service.py user-service 8001
-```
-
-**Terminal 3: Start Payment Service**
-```bash
-python example_service.py payment-service 8002
-```
-
-**Terminal 4: Run Discovery Demo**
-```bash
-python example_service.py demo
-```
-
-## 📡 API Endpoints
-
-### 1. Register a Service
-```http
-POST /register
-Content-Type: application/json
-
-{
-  "service": "user-service",
-  "address": "http://localhost:8001"
-}
-```
-
-**Response:**
-```json
-{
-  "status": "registered",
-  "message": "Service user-service registered at http://localhost:8001"
-}
-```
-
-### 2. Discover a Service
-```http
-GET /discover/user-service
-```
-
-**Response:**
-```json
-{
-  "service": "user-service",
-  "instances": [
-    {
-      "address": "http://localhost:8001",
-      "uptime_seconds": 45.2
-    }
-  ],
-  "count": 1
-}
-```
-
-### 3. Send Heartbeat
-```http
-POST /heartbeat
-Content-Type: application/json
-
-{
-  "service": "user-service",
-  "address": "http://localhost:8001"
-}
-```
-
-### 4. Deregister a Service
-```http
-POST /deregister
-Content-Type: application/json
-
-{
-  "service": "user-service",
-  "address": "http://localhost:8001"
-}
-```
-
-### 5. List All Services
-```http
-GET /services
-```
-
-**Response:**
-```json
-{
-  "services": {
-    "user-service": {
-      "total_instances": 2,
-      "active_instances": 2
-    },
-    "payment-service": {
-      "total_instances": 1,
-      "active_instances": 1
-    }
-  },
-  "total_services": 2
-}
-```
-
-### 6. Health Check
-```http
-GET /health
-```
-
-## 🔍 Key Concepts Explained
-
-### 1. Service Registration
-When a service starts, it tells the registry:
-- **Who am I?** (service name)
-- **Where am I?** (address/port)
+### Lock Usage Pattern
 
 ```python
-# Service registers itself
-requests.post("http://registry:5001/register", json={
-    "service": "user-service",
-    "address": "http://localhost:8001"
-})
+# Global lock
+registry_lock = threading.Lock()
+
+# Safe read/write pattern
+with registry_lock:
+    # Critical section - only one thread at a time
+    if service in registry:
+        registry[service].append(instance)
+    # Lock automatically released here
 ```
 
-### 2. Service Discovery
-When a service needs to call another service:
-- Ask the registry for available instances
-- Get list of addresses
-- Choose one (round-robin, random, etc.)
+### Concurrent Request Handling
+
+```
+Time →
+─────────────────────────────────────────────────────────>
+
+Thread 1: [Register user-service    ]
+Thread 2:         [Heartbeat payment-service]
+Thread 3:                  [Discover user-service]
+Cleanup:                            [Cleanup stale]
+
+With Lock:
+Thread 1: [──────────────]
+Thread 2:                 [──────────────]
+Thread 3:                                 [──────────]
+Cleanup:                                            [────]
+          ▲               ▲                         ▲
+          Lock acquired   Lock acquired             Lock acquired
+```
+
+## 📊 Data Structure
+
+### Registry Structure
 
 ```python
-# Discover payment service
-response = requests.get("http://registry:5001/discover/payment-service")
-instances = response.json()['instances']
-payment_url = instances[0]['address']  # Use first instance
+registry = {
+    "user-service": [
+        {
+            "address": "http://localhost:8001",
+            "registered_at": datetime(2026, 3, 11, 10, 0, 0),
+            "last_heartbeat": datetime(2026, 3, 11, 10, 5, 30)
+        },
+        {
+            "address": "http://localhost:8003",
+            "registered_at": datetime(2026, 3, 11, 10, 2, 0),
+            "last_heartbeat": datetime(2026, 3, 11, 10, 5, 25)
+        }
+    ],
+    "payment-service": [
+        {
+            "address": "http://localhost:8002",
+            "registered_at": datetime(2026, 3, 11, 10, 1, 0),
+            "last_heartbeat": datetime(2026, 3, 11, 10, 5, 28)
+        }
+    ]
+}
 ```
 
-### 3. Heartbeat Mechanism
-Services periodically send "I'm alive" signals:
-- Prevents stale entries
-- Detects crashed services
-- Registry removes services that stop sending heartbeats
+### Time Complexity
 
-```python
-# Send heartbeat every 10 seconds
-while True:
-    requests.post("http://registry:5001/heartbeat", json={
-        "service": "user-service",
-        "address": "http://localhost:8001"
-    })
-    time.sleep(10)
+| Operation | Time Complexity | Notes |
+|-----------|----------------|-------|
+| Register | O(n) | n = instances of service |
+| Discover | O(n) | n = instances of service |
+| Heartbeat | O(n) | n = instances of service |
+| Deregister | O(n) | n = instances of service |
+| List Services | O(s*n) | s = services, n = avg instances |
+| Cleanup | O(s*n) | s = services, n = avg instances |
+
+### Space Complexity
+
+```
+Total Memory = O(s * n * m)
+
+Where:
+  s = number of services
+  n = average instances per service
+  m = memory per instance (~200 bytes)
+
+Example:
+  10 services × 5 instances × 200 bytes = 10 KB
+  100 services × 10 instances × 200 bytes = 200 KB
+  1000 services × 20 instances × 200 bytes = 4 MB
 ```
 
-### 4. Graceful Shutdown
-When a service stops, it should deregister:
-- Prevents clients from calling dead services
-- Keeps registry clean
+## 🔄 State Transitions
 
-```python
-# On shutdown
-requests.post("http://registry:5001/deregister", json={
-    "service": "user-service",
-    "address": "http://localhost:8001"
-})
+### Service Instance Lifecycle
+
+```
+┌─────────┐
+│ Unknown │
+└────┬────┘
+     │ POST /register
+     ▼
+┌─────────┐
+│Registered│◄──────────┐
+└────┬────┘            │
+     │                 │ POST /heartbeat
+     │ Time passes     │ (within 30s)
+     ▼                 │
+┌─────────┐            │
+│ Active  │────────────┘
+└────┬────┘
+     │
+     │ No heartbeat for 30s
+     ▼
+┌─────────┐
+│  Stale  │
+└────┬────┘
+     │ Cleanup thread
+     ▼
+┌─────────┐
+│ Removed │
+└─────────┘
 ```
 
-## 🎯 Real-World Use Cases
+## 🌐 Network Communication
 
-### Netflix Eureka
-Netflix uses a similar pattern with their Eureka service registry:
-- Microservices register on startup
-- Other services discover them dynamically
-- Handles thousands of service instances
+### HTTP Request/Response Flow
 
-### Kubernetes Service Discovery
-Kubernetes has built-in service discovery:
-- Services register via DNS
-- Load balancing across pods
-- Health checks and auto-restart
-
-### Consul by HashiCorp
-Production-grade service registry with:
-- Health checking
-- Key-value store
-- Multi-datacenter support
-
-## 🔧 Improvements You Could Add
-
-1. **Persistence**: Save registry to disk/database
-2. **Load Balancing**: Return instances in round-robin order
-3. **Service Metadata**: Store version, tags, capabilities
-4. **Authentication**: Secure the registry endpoints
-5. **Monitoring**: Add metrics and logging
-6. **Clustering**: Multiple registry instances for high availability
-7. **Service Mesh**: Integrate with Istio or Linkerd
-
-## 🧪 Testing with cURL
-
-```bash
-# Register a service
-curl -X POST http://localhost:5001/register \
-  -H "Content-Type: application/json" \
-  -d '{"service": "test-service", "address": "http://localhost:9000"}'
-
-# Discover services
-curl http://localhost:5001/discover/test-service
-
-# List all services
-curl http://localhost:5001/services
-
-# Send heartbeat
-curl -X POST http://localhost:5001/heartbeat \
-  -H "Content-Type: application/json" \
-  -d '{"service": "test-service", "address": "http://localhost:9000"}'
-
-# Deregister
-curl -X POST http://localhost:5001/deregister \
-  -H "Content-Type: application/json" \
-  -d '{"service": "test-service", "address": "http://localhost:9000"}'
+```
+Client                    Network                   Registry
+  │                          │                          │
+  │  1. Create HTTP request  │                          │
+  │  POST /register          │                          │
+  │  Content-Type: json      │                          │
+  ├─────────────────────────>│                          │
+  │                          │  2. TCP connection       │
+  │                          │  established             │
+  │                          ├─────────────────────────>│
+  │                          │                          │
+  │                          │  3. Process request      │
+  │                          │  Validate, store data    │
+  │                          │                          │
+  │                          │  4. Generate response    │
+  │                          │<─────────────────────────┤
+  │  5. Receive response     │                          │
+  │<─────────────────────────┤                          │
+  │                          │                          │
 ```
 
-## 📊 Comparison: Original vs Improved
+## 🎯 Scalability Considerations
 
-| Feature | Original | Improved |
-|---------|----------|----------|
-| Registration | ✅ | ✅ |
-| Discovery | ✅ | ✅ |
-| Error Handling | ❌ | ✅ |
-| Heartbeats | ❌ | ✅ |
-| Deregistration | ❌ | ✅ |
-| Auto Cleanup | ❌ | ✅ |
-| Thread Safety | ❌ | ✅ |
-| Service Listing | ❌ | ✅ |
-| Health Endpoint | ❌ | ✅ |
-| Uptime Tracking | ❌ | ✅ |
+### Single Registry Limitations
 
-## 🎓 Learning Resources
+```
+Current Architecture:
+┌─────────┐
+│ Registry│ ← Single point of failure
+└────┬────┘
+     │
+     ├─── Service 1
+     ├─── Service 2
+     ├─── Service 3
+     └─── Service N
 
-- **Microservices Patterns** by Chris Richardson
-- **Building Microservices** by Sam Newman
-- **Martin Fowler's Blog**: https://martinfowler.com/articles/microservices.html
+Limitations:
+• Max ~1000 services
+• Max ~10,000 instances
+• Max ~1000 requests/sec
+• No redundancy
+```
 
-## 📝 License
+### Scaled Architecture (Future)
 
-This is a learning project - feel free to use and modify as needed!
+```
+Load Balancer
+     │
+     ├─── Registry 1 ◄──┐
+     ├─── Registry 2 ◄──┼── Replication
+     └─── Registry 3 ◄──┘
+          │
+          └─── Shared Database
+               (PostgreSQL/Redis)
 
-## 🤝 Contributing
+Benefits:
+• High availability
+• Horizontal scaling
+• No single point of failure
+• 10,000+ services
+• 100,000+ instances
+```
 
-This is an educational project. Feel free to:
-- Add new features
-- Improve documentation
-- Create additional examples
-- Share your learnings!
+## 📈 Monitoring Points
+
+```
+┌─────────────────────────────────────────┐
+│         Metrics to Monitor              │
+├─────────────────────────────────────────┤
+│                                         │
+│ • Total services registered             │
+│ • Total instances registered            │
+│ • Active vs stale instances             │
+│ • Registration rate (per second)        │
+│ • Discovery rate (per second)           │
+│ • Heartbeat rate (per second)           │
+│ • Average response time                 │
+│ • Error rate                            │
+│ • Memory usage                          │
+│ • CPU usage                             │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+This architecture provides a solid foundation for understanding distributed service discovery!
+
+---
+
+## Service Mesh Extension (Istio)
+
+### Overview
+
+The service mesh layer sits orthogonal to the application-level registry. Where the registry
+provides discovery, Istio provides traffic control, observability, and mTLS — entirely
+transparently to application code.
+
+```
+                         ┌───────────────────────────────────────────┐
+                         │          Kubernetes Cluster               │
+                         │  (namespace: service-mesh)                │
+                         │                                           │
+  External traffic       │  ┌─────────────────────────────────────┐ │
+  ─────────────────────>──>──│     Istio IngressGateway            │ │
+                         │  │     (Gateway resource)              │ │
+                         │  └──────────────┬──────────────────────┘ │
+                         │                 │ VirtualService          │
+                         │                 ▼                         │
+                         │  ┌─────────────────────────────────────┐ │
+                         │  │     Istio Pilot / istiod            │ │
+                         │  │     (DestinationRule: ROUND_ROBIN)  │ │
+                         │  └──────────────┬──────────────────────┘ │
+                         │                 │                         │
+                         │     ┌───────────┴────────────┐           │
+                         │     ▼                         ▼           │
+                         │  ┌──────────────┐   ┌──────────────────┐ │
+                         │  │ user-service │   │  user-service    │ │
+                         │  │   Pod 1      │   │    Pod 2         │ │
+                         │  │ ┌──────────┐ │   │ ┌──────────────┐ │ │
+                         │  │ │  App     │ │   │ │    App       │ │ │
+                         │  │ │ :8001    │ │   │ │   :8001      │ │ │
+                         │  │ └──────────┘ │   │ └──────────────┘ │ │
+                         │  │ ┌──────────┐ │   │ ┌──────────────┐ │ │
+                         │  │ │  Envoy   │ │   │ │    Envoy     │ │ │
+                         │  │ │ sidecar  │ │   │ │   sidecar    │ │ │
+                         │  │ └──────────┘ │   │ └──────────────┘ │ │
+                         │  └──────────────┘   └──────────────────┘ │
+                         └───────────────────────────────────────────┘
+```
+
+### Sidecar Injection
+
+Each pod in the `service-mesh` namespace automatically receives an Envoy sidecar proxy.
+The namespace label `istio-injection: enabled` triggers Istio's mutating admission webhook
+to inject the proxy container before the pod starts:
+
+```
+Pod lifecycle with Istio injection:
+  kubectl apply  →  Admission Webhook  →  Envoy injected  →  Pod starts
+                    (mutating)            (init + sidecar)
+```
+
+All inbound and outbound traffic for the application container is transparently
+intercepted by the Envoy sidecar via iptables rules set up by the `istio-init` init container.
+
+### Traffic Flow: App → Sidecar → Mesh
+
+```
+Client Pod                          user-service Pod 1
+┌──────────────────────────┐        ┌──────────────────────────────────────┐
+│  App code                │        │  Envoy sidecar (inbound)             │
+│  requests.get(           │        │  • mTLS termination                  │
+│    "http://user-service" │        │  • metrics collection                │
+│  )                       │        │  • access logging                    │
+│         │                │        │  • circuit breaking                  │
+│         ▼                │        │         │                            │
+│  Envoy sidecar           │  mTLS  │         ▼                            │
+│  (outbound)              │◄──────►│  App container                       │
+│  • service discovery     │        │  :8001/ping                          │
+│  • load balancing        │        └──────────────────────────────────────┘
+│  • retries (x3)          │
+│  • timeout (10s)         │
+│  • mTLS origination      │
+└──────────────────────────┘
+```
+
+### Istio Resources
+
+| Resource | File | Purpose |
+|---|---|---|
+| `Namespace` | `k8s/istio/namespace.yaml` | Enable sidecar auto-injection |
+| `Gateway` | `k8s/istio/gateway.yaml` | Accept external HTTP on port 80 |
+| `VirtualService` | `k8s/istio/virtual-service.yaml` | Route traffic + retries + timeout |
+| `DestinationRule` | `k8s/istio/destination-rule.yaml` | ROUND_ROBIN lb + outlier detection |
+
+### DestinationRule: Outlier Detection
+
+The `DestinationRule` configures automatic circuit breaking. If a pod returns 3 consecutive
+5xx errors within a 10s window, Istio ejects it from the load balancing pool for 30 seconds:
+
+```
+Normal:          Pod1 ──── Pod2 ──── Pod1 ──── Pod2   (ROUND_ROBIN)
+
+Pod2 failing:    Pod1 ──── Pod2(err) ──── Pod2(err) ──── Pod2(err)
+                                                           │
+                                          Ejected ─────────┘ (30s)
+
+During ejection: Pod1 ──── Pod1 ──── Pod1 ──── Pod1
+                 (100% traffic to healthy instance)
+```
+
+### Comparison: App-Level Registry vs Service Mesh
+
+| Concern | Service Registry | Istio Service Mesh |
+|---|---|---|
+| Discovery | App calls `/discover` | Envoy resolves via xDS |
+| Load balancing | `random.choice()` in client | ROUND_ROBIN in data plane |
+| Health checks | Heartbeat timeout (30s) | Outlier detection (continuous) |
+| Retries | Manual in client code | Declarative `VirtualService` |
+| mTLS | None | Automatic between all pods |
+| Observability | `print()` statements | Prometheus + Jaeger + Kiali |
+| Circuit breaking | None | `DestinationRule` outlierDetection |
+| Traffic shifting | Not supported | Weighted routes in VirtualService |
+
+Both layers are complementary in this codebase: the registry handles self-registration
+and explicit discovery; Istio handles the transport layer transparently.
